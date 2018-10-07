@@ -1,6 +1,7 @@
 import { TweenMax, Sine } from 'gsap';
-import { DAY } from 'constants';
-import MoonRealOrbit from './MoonRealOrbit';
+import { DAY } from '../../../core/constants';
+import MoonRealOrbit from './moon/OsculatingOrbit';
+import { ELP82B } from './moon/elp';
 
 export const moon = {
 	title: 'The Moon',
@@ -8,14 +9,16 @@ export const moon = {
 	mass: 7.3477e22,
 	radius: 1738.1,
 	color: '#aaaaaa',
-	map: './img/moonmap4k_levels.jpg',
-	sideralDay: (27.3215782 * DAY),
+	map: './assets/img/moonmap4k_levels.jpg',
+	siderealDay: (27.3215782 * DAY),
 	tilt: 1.5424,
 	fov: 1,
 	relativeTo: 'earth',
-	orbitCalculator: MoonRealOrbit,
-	osculatingOrbit: true,
+	osculatingElementsCalculator: MoonRealOrbit,
+	positionCalculator: ELP82B,
+	useCustomComputation: true,
 	orbit: {
+		tilt: false,
 		base: {
 			a: 384400,
 			e: 0.0554,
@@ -34,23 +37,40 @@ export const moon = {
 		},
 	},
 	getMapRotation(angle) {
-		if (angle > 0) {
-			return angle - Math.PI;
+		const circled = angle % Math.PI;
+		if (circled > 0) {
+			return circled;
 		}
-		return angle + Math.PI;
+		return Math.PI + circled;
 	},
 	customInitialize() {
+
 		if (this.relativeTo !== 'earth') return;
-		this.baseMapRotation = this.getMapRotation(this.getAngleTo('earth'));
-		this.nextCheck = this.sideralDay;
+		this.baseMapRotation = this.getMapRotation(this.getAngleTo('earth') - this.getCurrentRotation());
+		this.nextCheck = this.siderealDay;
 	},
-	customAfterTick(time) {
+	customAfterTick() {
+		
 		if (this.relativeTo !== 'earth') return;
-		//when a sideral day has passed, make sure that the near side is still facing the earth. Since the moon's orbit is heavily disturbed, some imprecision occurs in its orbit, and its duration is not always the same, especially in an incomplete scenario (where there are no sun/planets). Therefore, a correction is brought to the base map rotation, tweened so that is is not jerky.
+		const time = this.universe.getCurrentJ2000Time();
+
+		if (this.resetPosAtTick) {
+			const jd = this.universe.getCurrentJD();
+			const byEls = this.orbitalElements.calculatePosition(jd, true);
+			const vel = this.orbitalElements.calculateVelocity(jd);
+			// const byGrav = this.position;
+			// const dst = byEls.distanceTo(byGrav);
+			// console.log(dst / byEls.length());
+			this.setVelocity(vel);
+			this.position = byEls;
+		}
+
+		//when a sidereal day has passed, make sure that the near side is still facing the earth. Since the moon's orbit is heavily disturbed, some imprecision occurs in its orbit, and its duration is not always the same, especially in an incomplete scenario (where there are no sun/planets). Therefore, a correction is brought to the base map rotation, tweened so that is is not jerky.
 		if (time >= this.nextCheck) {
-			this.nextCheck += this.sideralDay;
+			this.nextCheck += this.siderealDay;
+			const rot = this.getMapRotation(this.getAngleTo('earth') - this.getCurrentRotation());
 			TweenMax.to(this, 2, {
-				baseMapRotation: this.getMapRotation(this.getAngleTo('earth')),
+				baseMapRotation: rot,
 				ease: Sine.easeInOut,
 			});
 		}

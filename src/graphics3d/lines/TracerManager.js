@@ -2,24 +2,23 @@
 	Controls the trace of a body relative to another. Traces are not orbit lines, they are the path trace of a body relative to another
 */
 
-import Tracer from 'graphics3d/lines/Tracer';
-import { getUniverse } from 'JSOrrery';
+import Tracer from './Tracer';
 
 //number of tracing vertices. It was previously taken directly from the orbit's size, but a constant number is more convenient
 const N_VERTICES = 1000;
 
-export default {
-	init(containerParam) {
+export default class TracerManager {
+	constructor(containerParam) {
 		this.bodies3d = [];
 		this.container = containerParam;
 		this.activeTracers = [];
-	},
+	}
 
 	setTraceFrom(lookFromBody, lookAtBody) {				
 		this.removeTracers();
 		this.activeTracers.length = 0;
 		this.addTracer(lookAtBody, lookFromBody);
-	},
+	}
 
 	//when date changes by user action, reset active tracers
 	resetTrace() {
@@ -28,7 +27,7 @@ export default {
 			tracer.getNew();
 			this.container.add(tracer.getDisplayObject());
 		});
-	},
+	}
 
 	addTracer(tracingBody, traceFromBody) {
 		if (!tracingBody) return;
@@ -38,7 +37,7 @@ export default {
 		tracer.getNew();
 		this.container.add(tracer.getDisplayObject());
 		this.activeTracers.push(tracer);
-	},
+	}
 
 	removeTracers() {
 		const container = this.container;
@@ -50,17 +49,17 @@ export default {
 			if (!tracer) return;
 			container.remove(tracer.getDisplayObject());
 		});
-	},
+	}
 
 	draw() {
 		if (this.deferredForceTraceBody) {
 			this.deferredForceTraceBody.forEach(tracingBody => {
-				const traceFromBody = getUniverse().getBody(tracingBody.celestial.traceRelativeTo || tracingBody.celestial.relativeTo);
+				const traceFromBody = tracingBody.getTraceRelativeToBody();
 				this.addTracer(tracingBody, traceFromBody && traceFromBody.getBody3D());
 			});
 			this.deferredForceTraceBody = null;
 		}
-	},
+	}
 
 	addBody(body3d) {
 
@@ -68,8 +67,7 @@ export default {
 
 		if (body3d.celestial.isCentral && !body3d.celestial.forceTrace) return;
 
-		const tracer = Object.create(Tracer);
-		tracer.init(body3d.celestial.traceColor || body3d.celestial.color, N_VERTICES, body3d.celestial.name);
+		const tracer = new Tracer(body3d.celestial.traceColor || body3d.celestial.color, N_VERTICES, body3d.celestial.name);
 		body3d.setTracer(tracer);
 
 		if (body3d.celestial.forceTrace) {
@@ -77,8 +75,8 @@ export default {
 			this.deferredForceTraceBody.push(body3d);
 		}
 		
-	},
+	}
 
 	kill() {
-	},
+	}
 };

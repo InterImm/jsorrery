@@ -1,22 +1,22 @@
 
-import Labels from 'graphics2d/Labels';
-import { getUniverse } from 'JSOrrery';
 import { getMissionFromName } from './NasaNumbers';
 import { earth } from './bodies/earth';
 import { moon } from './bodies/moon';
+import { getDateFromJD } from '../../utils/JD';
 
 
 const g = window.location.search.match(/apollo=([0-9]+)/);
-const apolloNumber = (g && g[1]) || '8';
+const apolloNumber = (g && g[1]) || '16';
 // const apolloEarthOrbit = getMissionFromName(`Apollo${apolloNumber}`).getNumbers('earth');
 const apolloTLIOrbit = getMissionFromName(`Apollo${apolloNumber}`).getNumbers('TLI');
-const epoch = apolloTLIOrbit.epoch;
+const epoch = getDateFromJD(apolloTLIOrbit.orbit.epoch);
 
 //apollo 8, 10, 12, 15, 16 work better with moon position calculated from physics
 //apollo 11, 14 work better with moon position always calculated from elements
 //apollo 13, 17 don't work at all
 //I chose to use the way it works better for each mission. Even if it seems like cheating, the goal of the simulation is to show an approximation of the free return trajectory, and it does not pretend to be as accurate as Nasa could get it. All the numbers involved come from different sources, and I don't know how accurate they are anyway, so better show something plausible instead of seeking perfect accuracy. 
-const osculatingOrbit = [11, 14].indexOf(Number(apolloNumber)) > -1;
+// const useCustomComputation = [8, 11, 14].indexOf(Number(apolloNumber)) > -1;
+const useCustomComputation = false;
 
 const apolloBase = {
 	title: `Apollo ${apolloNumber}`,
@@ -40,17 +40,17 @@ const apolloTLI = Object.assign(
 		customInitialize() {
 			this.data = {};
 		},
-		customAfterTick(elapsedTime, absoluteDate, deltaT) {
+		customAfterTick(deltaT) {
 			let dist;
 
 			if (!this.data.isOnReturnTrip) {
 				if (!this.data.hasTLILabel && this.relativePosition.x !== 0) {
-					Labels.addEventLabel('Trans Lunar Injection', this.relativePosition.clone(), getUniverse().getBody(this.relativeTo));
+					this.universe.getScene().addEventLabel('Trans Lunar Injection', this.relativePosition.clone(), this.universe.getBody(this.relativeTo));
 					this.data.hasTLILabel = true;
 				}
 
 
-				dist = (Math.abs(this.position.clone().sub(getUniverse().getBody('moon').position).length()) / 1000) - getUniverse().getBody('moon').radius;
+				dist = (Math.abs(this.position.clone().sub(this.universe.getBody('moon').position).length()) / 1000) - this.universe.getBody('moon').radius;
 				let moonSpeed = 0;
 				if (this.data.lastMoonDist) {
 					moonSpeed = ((this.data.lastMoonDist - dist) / deltaT) * 1000;
@@ -59,7 +59,7 @@ const apolloTLI = Object.assign(
 				if (!this.data.minMoonDist || dist < this.data.minMoonDist) {
 					this.data.minMoonDist = dist;
 				} else if (this.data.lastMoonDist === this.data.minMoonDist) {
-					Labels.addEventLabel('Closest distance to<br>the Moon: ' + Math.round(this.data.minMoonDist) + ' km', this.previousRelativePosition.clone(), getUniverse().getBody(this.relativeTo));
+					this.universe.getScene().addEventLabel('Closest distance to<br>the Moon: ' + Math.round(this.data.minMoonDist) + ' km', this.previousRelativePosition.clone(), this.universe.getBody(this.relativeTo));
 					this.data.isOnReturnTrip = true;
 					//Universe.stop();
 				}
@@ -69,12 +69,12 @@ const apolloTLI = Object.assign(
 				this.data.minSpeed = !this.data.minSpeed || (this.data.minSpeed > this.speed) ? this.speed : this.data.minSpeed;
 
 			} else {
-				dist = (Math.abs(this.position.clone().sub(getUniverse().getBody('earth').position).length()) / 1000) - getUniverse().getBody('earth').radius;
+				dist = (Math.abs(this.position.clone().sub(this.universe.getBody('earth').position).length()) / 1000) - this.universe.getBody('earth').radius;
 				if (!this.data.minEarthDist || dist < this.data.minEarthDist) {
 					this.data.minEarthDist = dist;
-				} else if (this.data.lastEarthDist === this.data.minEarthDist && dist < (Math.abs(this.position.clone().sub(getUniverse().getBody('moon').position).length()) / 1000)) {
-					Labels.addEventLabel('Closest distance to<br>the Earth: ' + Math.round(this.data.minEarthDist) + ' km<br>Simulation stopped', this.previousRelativePosition.clone(), getUniverse().getBody(this.relativeTo));
-					getUniverse().stop();
+				} else if (this.data.lastEarthDist === this.data.minEarthDist && dist < (Math.abs(this.position.clone().sub(this.universe.getBody('moon').position).length()) / 1000)) {
+					this.universe.getScene().addEventLabel('Closest distance to<br>the Earth: ' + Math.round(this.data.minEarthDist) + ' km<br>Simulation stopped', this.previousRelativePosition.clone(), this.universe.getBody(this.relativeTo));
+					this.universe.stop();
 				}
 
 				this.data.lastEarthDist = dist;
@@ -91,8 +91,7 @@ export default {
 	commonBodies: [earth, moon],
 	secondsPerTick: { min: 100, max: 500, initial: 200 },
 	calculationsPerTick: 200,
-	calculateAll: true,
-	// useBarycenter: false,
+	useBarycenter: false,
 	forcedGuiSettings: {
 		date: epoch,
 		scale: 1,
@@ -102,8 +101,10 @@ export default {
 		
 		},
 		moon: {
-			osculatingOrbit,
+			useCustomComputation,
+			forceMaxPrecision: true,
 			showSolidOrbit: true,
+			resetPosAtTick: true,
 		},
 		apolloTLI: Object.assign({},
 			apolloTLI,

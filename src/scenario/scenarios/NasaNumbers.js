@@ -1,12 +1,13 @@
 /**
 	source for calculations http://www.braeunig.us/apollo/apollo11-TLI.htm
 */
-import { DEG_TO_RAD, RAD_TO_DEG, FT_TO_M, KM, CIRCLE, DAY } from 'constants';
+import { DEG_TO_RAD, RAD_TO_DEG, FT_TO_M, KM, CIRCLE, DAY } from '../../core/constants';
 import { earth } from './bodies/earth';
+import { getJD } from '../../utils/JD';
 
 
 //source: http://www.csgnetwork.com/siderealjuliantimecalc.html
-function getLongAtLocalSideralTime(dateGMT, longitude) {
+function getLongAtLocalSiderealTime(dateGMT, longitude) {
 	const day = dateGMT.getUTCDate();
 	let month = dateGMT.getUTCMonth() + 1;
 	let year = dateGMT.getUTCFullYear();
@@ -47,7 +48,7 @@ function getLongAtLocalSideralTime(dateGMT, longitude) {
 
 
 const GM = 3.986005e14;
-function getMissionNumbers(orbitType) {
+function getMissionNumbers(orbitType = 'earth') {
 
 	//see http://www.braeunig.us/apollo/apollo11-TLI.htm
 
@@ -91,7 +92,7 @@ function getMissionNumbers(orbitType) {
 	} else {
 		epoch = new Date(new Date(this.launchTime).getTime() + numbers.time * 1000);
 	}
-	const celestLongAscNode = getLongAtLocalSideralTime(epoch, geoLongAscNode * RAD_TO_DEG);
+	const celestLongAscNode = getLongAtLocalSiderealTime(epoch, geoLongAscNode * RAD_TO_DEG);
 
 	const E = Math.acos((e + Math.cos(trueAnomaly)) / (1 + e * Math.cos(trueAnomaly)));
 	const M = E - e * Math.sin(E);
@@ -123,11 +124,11 @@ function getMissionNumbers(orbitType) {
 		celestLongAscNode += 145;
 		celestLongAscNode = celestLongAscNode%360;
 	}/**/
-
+	// console.log(epoch, a / KM);
 	return {
-		epoch,
+		relativeTo: 'earth',
 		orbit: {
-			relativeTo: 'earth',
+			epoch: getJD(epoch),
 			base: {
 				a: a / KM,
 				e,

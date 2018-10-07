@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { G } from 'constants';
+import { G } from '../core/constants';
 
 export default {
 	/**
@@ -15,7 +15,7 @@ export default {
 				const skipComputation = (
 					(bodies[i].mass === 1 && bodies[j].mass === 1)
 					||
-					(bodies[i].osculatingOrbit && bodies[j].osculatingOrbit) 
+					(bodies[i].useCustomComputation && bodies[j].useCustomComputation) 
 				);
 				if (!skipComputation) {
 					workVect = this.getGForceBetween(bodies[i].mass, bodies[j].mass, bodies[i].position, bodies[j].position);
@@ -31,12 +31,15 @@ export default {
 	*/
 	getGForceBetween(mass1, mass2, pos1, pos2) {
 		const workVect = new Vector3();
-		workVect.copy(pos1).sub(pos2);//vector is between positions of body A and body B
+		//vector is between positions of body A and body B
+		workVect.copy(pos1).sub(pos2);
 		const dstSquared = workVect.lengthSq();
 		const massPrd = mass1 * mass2;
-		const Fg = G * (massPrd / dstSquared);//in newtons (1 N = 1 kg*m / s^2)
+		//in newtons (1 N = 1 kg*m / s^2)
+		const Fg = G * (massPrd / dstSquared);
 		workVect.normalize();
-		workVect.multiplyScalar(Fg);//vector is now force of attraction in newtons/**/
+		//vector is now force of attraction in newtons
+		workVect.multiplyScalar(Fg);
 		return workVect;
 	},
 };

@@ -9,7 +9,7 @@ radius: km
 
 import Promise from 'bluebird';
 import $ from 'jquery';
-import { J2000, AU } from 'constants';
+import { AU } from '../../core/constants';
 import { moon } from './bodies/moon';
 import { sun } from './bodies/sun';
 import { mercury } from './bodies/mercury';
@@ -82,15 +82,12 @@ function loadNeo(neoData) {
 function onObjectLoaded(res) {
 	// console.log(res);
 	const { name, orbital_data } = res;
-
-	const tsSinceJ2000 = (Number(orbital_data.epoch_osculation) - 2451545) * (60 * 60 * 24 * 1000);
-	const epochTime = J2000.getTime() + tsSinceJ2000;
-	const epoch = new Date(epochTime);
+	
 	return Object.assign({
 		name,
 		title: name,
 		orbit: {
-			epoch,
+			epoch: Number(orbital_data.epoch_osculation),
 			base: {
 				a: Number(orbital_data.semi_major_axis) * AU,
 				e: Number(orbital_data.eccentricity),
@@ -130,8 +127,6 @@ const cnf = {
 
 		return scenarioReady;
 	},
-	/*calculateAll : true,
-	usePhysics : true,/**/
 	commonBodies: [
 		sun,
 		mercury,

@@ -1,273 +1,187 @@
 
 import $ from 'jquery';
-import ExportValues from './ExportValues';
-
-const FA = 'fa ';
-const BTNS_CLASS = {
-	share: FA + 'fa-share-alt',
-	start: [FA + 'fa-play-circle', FA + 'fa-pause-circle'],
-};
-
-
-const controls = {};
-const selects = {};
-let dateDisplay;
-let date;
-
-function removeControl(elId) {
-	const el = controls[elId];
-	if (el) el.remove();
-}
-
-function getContainer(id) {
-	return $(`#${id}Cont`);
-}
-
-function getLabel(id) {
-	return $(`#${id}Label`);
-}
-
-function hideContent(content) {
-	content.removeClass('shown');
-	return false;
-}
-
-function showContent(content) {
-	content.addClass('shown');
-	return true;
-}
-
-function setupHelp() {
-	const allHelpContents = $('.helpContent');
-
-	$('.help').each((i, el) => {
-		let content;
-		let shown = false;
-		$(el).on('click.jsorrery', (e) => {
-			e.preventDefault();
-			if (!content) {
-				content = allHelpContents.filter(`#${el.dataset.for}`);
-				content.find('.close').on('click.jsorrery', () => {
-					shown = hideContent(content);
-				});
-			}
-			// console.log(content);
-			hideContent(allHelpContents);
-			shown = shown ? hideContent(content) : showContent(content);
-		});
-	});
-}
-
-function listClicked(id, selector, clickedOption, input) {
-	const val = clickedOption.data('value');
-	selector.display.html(clickedOption.html());
-	input.val(val).trigger('change');
-	ExportValues.setVal(id, val);
-}
-
+import TweenMax from 'gsap';
+import InputDate from './InputDate';
+import InputGeoCoord from './InputGeoCoord';
+import InputSelect from './InputSelect';
+import InputSlider from './InputSlider';
+import InputButton from './InputButton';
 
 export const PLANET_SCALE_ID = 'planetScale';
 export const SCENARIO_ID = 'scenario';
 export const START_ID = 'start';
 export const SHARE_ID = 'share';
 export const DATE_ID = 'date';
+export const DATE_DISPLAY_ID = 'dateDisplay';
 export const LOOKAT_ID = 'lookAt';
 export const LOOKFROM_ID = 'lookFrom';
 export const DELTA_T_ID = 'deltaT';
+export const GEOLOC_ID = 'geoloc';
 
-export default {
-	init() {
-		setupHelp();
-	},
-
-	addBtn(labelParam, id, callback, key) {
-		removeControl(id);
-		const classNames = BTNS_CLASS[id];
-		let classOff;
-		let classOn;
-		if (classNames instanceof Array) {
-			classOff = classNames[0];
-			classOn = classNames[1];
-		} else {
-			classOff = classNames;
+function hideContent(content) {
+	TweenMax.killTweensOf(content);
+	TweenMax.to(content, 0.3, {
+		opacity: 0, 
+		onComplete() {
+			content.hide();
 		}
-		const label = classOff ? '&nbsp;' : labelParam;
-		let status = false;
+	});
+	return false;
+}
 
-		const btn = controls[id] = $(`<button class="${classOff}" id="${id}">${label}</button>`).appendTo(getContainer(id));
-		btn.on('click.jsorrery', (e) => {
-			e.stopPropagation();
-			callback();
-			status = !status;
-			const targetClass = (status && classOn) || classOff;
-			btn.attr('class', targetClass);
+function showContent(content) {
+	TweenMax.killTweensOf(content);
+	content.show();
+	TweenMax.to(content, 0.3, {
+		opacity: 1, 
+	});
+	return true;
+}
+
+export default class Gui {
+	constructor() {
+		this.gui = $('nav#gui');
+		this.setupHelp();
+
+		const collapser = $('#navCollapse');
+		const collapsedClass = 'collapsed';
+		const collapserUpClass = 'fa-angle-double-up';
+		const collapserDownClass = 'fa-angle-double-down';
+
+		collapser.on('click.jsorrery', () => {
+			this.gui.toggleClass(collapsedClass);
+			if (this.gui.hasClass(collapsedClass)) {
+				collapser.addClass(collapserDownClass).removeClass(collapserUpClass);
+			} else {
+				collapser.addClass(collapserUpClass).removeClass(collapserDownClass);
+			}
 		});
+	}
 
-		if (key) {
-			const keyCode = key.toUpperCase().charCodeAt(0);
-			$(window).on('keyup.jsorrery', (e) => {
-				// console.log(e.keyCode, keyCode);
-				// console.log(String.fromCharCode(e.keyCode), String.fromCharCode(keyCode));
-				if (e.keyCode === keyCode) btn.trigger('click');
-			});
-		}
-	},
+	addBtn(labelTx, id, onClick, key) {
+		this.emptyContainer(id);
+		const btn = new InputButton(labelTx, id, onClick, key);
+		const widget = btn.getWidget();
+		this.addWidget(id, widget);
+	}
 
 	addDropdown(id, callback) {
-		removeControl(id);
-		const dropdownContainer = getContainer(id).empty().addClass('dropdown');
-		const dropdownDisplay = $('<div class="display">').appendTo(dropdownContainer);
-		const selector = selects[id] = {
-			input: $(`<input id="${id}_inp">`).on('change.jsorrery', callback),
-			display: dropdownDisplay,
-			list: $(`<ul id="${id}">`).appendTo(dropdownContainer),
-			options: {},
-		};
-
-		controls[id] = selector.list;
-		const input = selector.input;
-
-		selects[id].clickHandler = (e) => {
-			listClicked(id, selector, $(e.currentTarget), input);
-		};
-
-		return selects[id].input;
-	},
-
-	addOption(selectName, label, val, isSelected) {
-		const sel = selects[selectName];
-		if (!sel) return;
-
-		const option = sel.options[val] = $(`<li data-value="${val}">${label}</li>`);
-		option.on('click.jsorrery', sel.clickHandler);
-
-		if (sel.list.children().length === 0) {
-			sel.input.val(val);
-			sel.display.html(label);
-			ExportValues.setVal(selectName, val);
-		}
-
-		option.appendTo(sel.list);
-
-		const defaultVal = this.defaultSettings && this.defaultSettings[selectName];
-		if (isSelected || defaultVal === val) {
-			this.pushDefaultsCallbacks(() => {
-				listClicked(selectName, sel, option, sel.input);
-			});
-		}
-
-	},
-
-	toggleOptions(selectName, toToggle, isShow) {
-		const options = selects[selectName].options;
-		const toggleFcn = isShow ? 'removeClass' : 'addClass';
-		const curVal = selects[selectName].input.val();
-		if (!isShow && !~toToggle.indexOf(curVal)) {
-			selects[selectName].input.val('');
-		}
-		toToggle.forEach((optId) => {
-			if (options[optId]) options[optId][toggleFcn]('disabled');
-		});
-	},
-
-	addDate(onChange) {
-		if (!dateDisplay) {
-			dateDisplay = $('<input>').appendTo(getContainer(DATE_ID));
-		}
-
-		let curDate;
-		dateDisplay.off('change').on('change.jsorrery', () => {
-			let newDate = new Date(dateDisplay.val());
-			if (isNaN(newDate.getTime())) {
-				newDate = new Date();
-			}
-			if (curDate !== newDate) {
-				this.setDate(newDate);
-				onChange();
-			}
-			curDate = newDate;
-		});
-
-		let defaultDate = this.defaultSettings[DATE_ID];
-		if (defaultDate) {
-			defaultDate = new Date(defaultDate);
-			this.setDate(defaultDate);
-		}
-
-		return dateDisplay;
-	},
-
-	setDate(d) {
-		date = d;
-		if (d) {
-			const dStr = d.toISOString();
-			ExportValues.setVal(DATE_ID, dStr);
-			if (dateDisplay) dateDisplay.val(dStr);
-		}
-	},
-
-	getDate() {
-		return date;
-	},
+		this.emptyContainer(id);		
+		const sel = new InputSelect(id, this.defaultSettings[id], callback, this);
+		const widget = sel.getWidget();
+		this.addWidget(id, widget, 'dropdown');	
+		return sel;
+	}
 
 	addSlider(id, options, onChange) {
-		removeControl(id);
-		const container = getContainer(id);
+		this.emptyContainer(id);
 		const defaultVal = Number(this.defaultSettings[id]) || (options && options.initial) || 1;
-		const valDisplay = getLabel(id).find('.valDisplay').text(defaultVal);
+		const slider = new InputSlider(id, defaultVal, this.setOnChange(id, onChange), options, this);
+		const widget = slider.getWidget();
+		this.addWidget(id, widget);
+	}
 
-		const min = (options && options.min) || 1;
-		const max = (options && options.max) || 100;
-		const step = (options && options.step) || 1;
+	addDate(onChange) {
+		this.emptyContainer(DATE_ID);
+		InputDate.init(this.setOnChange(DATE_ID, onChange), this.defaultSettings[DATE_ID]);
+		this.addWidget(DATE_ID, InputDate.getWidget());
+		return InputDate;
+	}
+	
+	addGeoloc(originalValues, onChange) {
+		this.emptyContainer(GEOLOC_ID);
+		// console.log(defaultSettings[GEOLOC_ID]);
+		// console.log(originalValues);
+		InputGeoCoord.init(this.defaultSettings[GEOLOC_ID] || originalValues, this.setOnChange(GEOLOC_ID, onChange));
+		this.addWidget(GEOLOC_ID, InputGeoCoord.getWidget());
+		
+		return InputGeoCoord;
+	}
 
-		const slider = $(`<input type ="range" min="${min}" max="${max}" step="${step}" value ="${defaultVal}"/>`).appendTo(container);
-
-		slider.off('input').on('input.jsorrery', () => {
-			const val = slider.val();
-			valDisplay.text(val);
-			ExportValues.setVal(id, val);
-			onChange(val);
-		});
-
-		function setSlideValue(val) {
-			slider.val(val);
-		}
-
-		controls[id] = slider;
-
-		if (defaultVal) {
-			this.pushDefaultsCallbacks(() => {
-				setSlideValue(defaultVal);
-				onChange(defaultVal);
-			});
-		}
-
-		ExportValues.setVal(id, defaultVal);
-
-		return slider;
-	},
-
-	remove(id) {
-		removeControl(id);
-	},
+	removeGeoloc() {
+		InputGeoCoord.sleep();
+		this.hideGuiElement(GEOLOC_ID);
+	}
 
 	pushDefaultsCallbacks(callback) {
 		this.defaultCallbacks = this.defaultCallbacks || [];
 		this.defaultCallbacks.push(callback);
-	},
+	}
 
 	putDefaults() {
 		if (!this.defaultCallbacks) return;
 		this.defaultCallbacks.forEach(callback => callback());
 		this.defaultCallbacks.length = 0;
-	},
+	}
 
-	getDefaultCameraPos() {
+	//default settings for GUI when loading a scenario / a page
+	setDefaults(v) {
+		this.defaultSettings = v;
+	}
 
-	},
+	getContainer(id) {
+		return $(`#${id}Cont`);
+	}
 
-	setDefaults(defaultSettings) {
-		//console.log(defaultSettings);
-		this.defaultSettings = defaultSettings;
-	},
+	getLabel(id) {
+		return $(`#${id}Label`);
+	}
+
+	hideGuiElement(id) {
+		return this.getLabel(id).removeClass('shown');
+	}
+
+	emptyContainer(id) {
+		this.getContainer(id).empty();
+	}
+
+	addWidget(id, widget, classes) {
+		const c = this.getContainer(id);
+		this.getLabel(id).addClass('shown');
+		if (classes) c.addClass('dropdown');
+		c.append(widget);
+	}
+
+	setOnChange(id, defaultOnChange) {
+		const label = this.getLabel(id).find('.valDisplay');
+		return (val) => {
+			if (label.length) label.text(val);
+			if (defaultOnChange) defaultOnChange(val);
+		};
+	}
+
+
+	fadeGui(hasHelpShown) {
+		const navToggleAction = hasHelpShown ? 'addClass' : 'removeClass';
+		this.gui[navToggleAction]('faded');
+	}
+
+	setupHelp() {
+		const allHelpContents = $('.helpContent');
+
+		$('.help').each((i, el) => {
+			let content;
+			let shown = false;
+			$(el).on('click.jsorrery', () => {
+				if (!content) {
+					content = allHelpContents.filter(`#${el.dataset.for}`);
+					const close = content.find('.close');
+
+					close.on('click.jsorrery', () => {
+						shown = hideContent(content);
+						fadeGui(shown);
+					});
+				}
+				// console.log(content);
+				hideContent(allHelpContents.not(content));
+				shown = shown ? hideContent(content) : showContent(content);
+				fadeGui(shown);
+			});
+		});
+		//default open help on load page, if any
+		const defaultHelpOpen = window.jsOrrery && window.jsOrrery.defaults && window.jsOrrery.defaults.showHelp;
+		if (defaultHelpOpen) {
+			$(`.help[data-for="${defaultHelpOpen}"]`).trigger('click');
+		}
+	}
 };

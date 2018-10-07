@@ -3,9 +3,10 @@
 Corrections have been added to element's altitude to compensate for imprecisions in parameters, so as to fit mechanical orbit to orbital elements.
 
 */
-import { DAY } from 'constants';
+import { DAY } from '../../core/constants';
 import { earth } from './bodies/earth';
 import { Mercury7, Mercury8 } from './NasaNumbers';
+import { getJD } from '../../utils/JD';
 
 export default {
 	name: 'Artificial',
@@ -13,7 +14,7 @@ export default {
 	commonBodies: [earth],
 	bodies: {
 		/*earth: {
-			map: './img/earthmap1k_KSC.jpg'
+			map: './assets/img/earthmap1k_KSC.jpg'
 		},/**/
 		//https://books.google.ca/books?id=lZWZXbOKZvEC&pg=PA107&lpg=PA107&dq=sputnik+1+argument+of+perigee&source=bl&ots=UjcyyLTQBQ&sig=4UAJgXkoSVUSkiLkbvSM5-jm3vM&hl=en&sa=X&ved=0ahUKEwjcwqTq1u3RAhVj7YMKHZV4DN44ChDoAQg1MAQ#v=onepage&q=sputnik%201%20argument%20of%20perigee&f=false
 		sputnik1: {
@@ -21,8 +22,8 @@ export default {
 			mass: 84,
 			radius: 2,
 			color: '#ffffff',
+			relativeTo: 'earth',
 			orbit: {
-				relativeTo: 'earth',
 				base: {
 					a: ((earth.radius * 2) + 228 + 947) / 2,
 					e: 0.0517,
@@ -46,8 +47,8 @@ export default {
 			mass: 1224.7,
 			radius: 2,
 			color: '#ffffff',
+			relativeTo: 'earth',
 			orbit: {
-				relativeTo: 'earth',
 				base: {
 					a: ((earth.radius * 2) + 159 + 265) / 2,
 					e: 0.00804,
@@ -73,7 +74,7 @@ export default {
 				radius: 2,
 				color: '#ffffff',
 			},
-			Mercury7.getNumbers('earth')
+			Mercury7.getNumbers()
 		),
 		mercury8: Object.assign(
 			{
@@ -82,15 +83,15 @@ export default {
 				radius: 2,
 				color: '#ffffff',
 			},
-			Mercury8.getNumbers('earth')
+			Mercury8.getNumbers()
 		),
 		hubble: {
 			title: 'Hubble ST',
 			mass: 11110,
 			radius: 2,
 			color: '#ffaa00',
+			relativeTo: 'earth',
 			orbit: {
-				relativeTo: 'earth',
 				base: {
 					a: (earth.radius + 11 + 586.47),
 					e: 0.00172,
@@ -115,8 +116,8 @@ export default {
 			mass: 1,
 			radius: 2,
 			color: '#00aaff',
+			relativeTo: 'earth',
 			orbit: {
-				relativeTo: 'earth',
 				base: {
 					a: ((earth.radius * 2) + 161 + 259.4) / 2,
 					e: 0.0003,

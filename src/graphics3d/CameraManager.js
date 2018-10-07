@@ -1,12 +1,11 @@
 
+import $ from 'jquery';
 import { Vector3, PerspectiveCamera } from 'three';
-import { OrbitControls } from 'utils/ThreeExamples';
-import { getUniverse } from 'JSOrrery';
-import TracerManager from 'graphics3d/lines/TracerManager';
-import OrbitLinesManager from 'graphics3d/lines/OrbitLinesManager';
-import ExportValues from 'gui/ExportValues';
-import Gui, { LOOKFROM_ID, LOOKAT_ID } from 'gui/Gui';
-import { DEG_TO_RAD } from 'constants';
+import { OrbitControls } from '../utils/ThreeExamples';
+import ExportValues from '../gui/ExportValues';
+import { LOOKFROM_ID, LOOKAT_ID } from '../gui/Gui';
+import { DEG_TO_RAD } from '../core/constants';
+import GeoPos from './GeoPos';
 
 const DEFAULT_FOV = 45;
 const MAX_FOV = 90;
@@ -16,216 +15,250 @@ const POV_CAMERA_TYPE = 'pov';
 const toggling_at_options = ['night', 'front', 'back'];
 const lookAt = new Vector3();
 
-let bodies3d;
-let trackOptionSelectors;
-let viewSettings;
-let globalCamera;
-let currentCamera;
-let allCameras;
-let cameraParams;
-let scene;
-let domEl;
-
-
-function toggleCamera() {
-	viewSettings.lookFrom = trackOptionSelectors.from.val();
-	viewSettings.lookAt = trackOptionSelectors.at.val();
-	disableControls();
-
-
-	const lookFromBody = bodies3d[viewSettings.lookFrom];
-	const lookAtBody = bodies3d[viewSettings.lookAt];
-
-	TracerManager.setTraceFrom();
-
-	if (lookFromBody) {
-		currentCamera = lookFromBody.getCamera(POV_CAMERA_TYPE);
-		domEl.on('mousewheel', onMouseWheel);
-
-		//if we look from a body to another, trace the lookat body's path relative to the pov UNLESS the look target is orbiting to the pov
-		if (lookAtBody && !lookAtBody.celestial.isOrbitAround(lookFromBody.celestial)) {
-			TracerManager.setTraceFrom(lookFromBody, lookAtBody);
-		}
-
-	} else {
-		domEl.off('mousewheel');
-
-		//if we want to look from an orbital camera, check if it is to look at a particular body or to the whole system
-		if (viewSettings.lookFrom === ORBITAL_CAMERA_TYPE) {
-			currentCamera = (lookAtBody && lookAtBody.getCamera(ORBITAL_CAMERA_TYPE)) || globalCamera;
-			if (currentCamera.jsorrery && currentCamera.jsorrery.controls) currentCamera.jsorrery.controls.enabled = true;
-		}
-	}
-
-	Gui.toggleOptions(LOOKAT_ID, toggling_at_options, !!lookFromBody);
-
-	ExportValues.setCamera(currentCamera);
-
-	//we show/hide orbits and ecliptics depending on what bodies are of interest
-	OrbitLinesManager.onCameraChange(lookFromBody, lookAtBody);
-
-	updateCamera();
-	scene.draw();
-}
-
-function updateCamera() {
-
-	if (typeof viewSettings.lookFrom === 'undefined') toggleCamera();
-
-	const lookFromBody = bodies3d[viewSettings.lookFrom];
-	const lookAtBody = bodies3d[viewSettings.lookAt];
-	const controls = currentCamera.jsorrery && currentCamera.jsorrery.controls;
-	if (controls) {
-		controls.update();
-	} else if (viewSettings.lookFrom) {
-
-		if (lookAtBody) {
-			lookAt.copy(lookAtBody.getPosition()).sub(lookFromBody.getPosition());	
-		} else if (viewSettings.lookAt === 'night') {
-			lookAt.copy(lookFromBody.getPosition());
-			lookAt.multiplyScalar(2);
-		} else if ('front,back'.indexOf(viewSettings.lookAt) !== -1) {
-			const vel = lookFromBody.celestial.movement;
-			lookAt.copy(vel).normalize();
-			if (viewSettings.lookAt === 'back') lookAt.negate();
-		} else {
-			lookAt.set(0, 0, 0).sub(lookFromBody.getPosition());
-		}
-		
-		currentCamera.lookAt(lookAt);
-	}
-
-}
-
-function onMouseWheel(event, delta) {
-	const deltaDir = delta / Math.abs(delta);
-	currentCamera.fov += currentCamera.fov * 0.1 * -deltaDir;
-	if (currentCamera.fov > MAX_FOV) currentCamera.fov = MAX_FOV;
-	currentCamera.updateProjectionMatrix();
-	scene.draw();
-}
-
-function onControlsUpdate() {
-	if (!getUniverse().isPlaying()) scene.draw();
-}
-
 function getDistanceFromFov(dimToSee, fov) {
 	return dimToSee * Math.atan(fov * 2 * DEG_TO_RAD);
 }
 
-function getNewCamera(isOrbital) {
-	const cam = new PerspectiveCamera(cameraParams.fov, cameraParams.aspect, cameraParams.near, cameraParams.far);
-	cam.up = new Vector3(0, 0, 1);
 
-	if (isOrbital) {
-		const controls = new OrbitControls(cam, domEl.get(0));
-		//set the controls as a property of the camera, but namespaced
-		cam.jsorrery = cam.jsorrery || {};
-		cam.jsorrery.controls = controls;
-		controls.addEventListener('change', onControlsUpdate);
-		controls.target.set(0, 0, 0);
-		controls.enabled = false;
-	}
-
-	allCameras.push(cam);
-	return cam;
-}
-
-function disableControls() {
-	allCameras.forEach(cam => {
-		if (cam.jsorrery && cam.jsorrery.controls) cam.jsorrery.controls.enabled = false;
-	});
-}
-
-export default {
-	init(sceneParam, aspect, fov, stageSize, container) {
-		scene = sceneParam;
-		domEl = container;
-		allCameras = [];
-		bodies3d = {};
-		viewSettings = {};
-		cameraParams = {
+export default class CameraManager {
+	constructor(sceneParam, aspect, fov, stageSize, container, universeParam, orbitLinesManager, tracerManager, gui) {
+		this.gui = gui;
+		this.scene = sceneParam;
+		this.universe = universeParam;
+		this.domEl = $(container);
+		this.allCameras = [];
+		this.bodies3d = {};
+		this.viewSettings = {};
+		this.cameraParams = {
 			fov: fov || DEFAULT_FOV,
 			aspect,
 			near: 0.001,
-			far: stageSize * 5,
+			far: 2000000, ///stageSize * 10,
 		};
+		this.orbitLinesManager = orbitLinesManager;
+		this.tracerManager = tracerManager;
 
-		globalCamera = getNewCamera(true);
-		globalCamera.position.set(0, -1, getDistanceFromFov(stageSize, globalCamera.fov));
+		this.globalCamera = this.getNewCamera(true);
+		this.globalCamera.position.set(0, -1, getDistanceFromFov(stageSize, this.globalCamera.fov));
 
-		scene.root.add(globalCamera);
+		this.scene.getRoot().add(this.globalCamera);
 
-		trackOptionSelectors = {
-			from: Gui.addDropdown(LOOKFROM_ID, toggleCamera),
-			at: Gui.addDropdown(LOOKAT_ID, toggleCamera),
+		this.trackOptionSelectors = {
+			from: gui.addDropdown(LOOKFROM_ID, this.toggleCamera),
+			at: gui.addDropdown(LOOKAT_ID, this.toggleCamera),
 		};
 		
-		Gui.addOption(LOOKFROM_ID, 'Free camera', 'orbital');
-		Gui.addOption(LOOKAT_ID, 'System', 'universe');
+		this.trackOptionSelectors.from.addOption('Free camera', 'orbital');
+		this.trackOptionSelectors.at.addOption('System', 'universe');
 
-		if (getUniverse().getBody().name === 'sun') {
-			Gui.addOption(LOOKAT_ID, 'Night (away from the sun)', 'night');
+		if (this.universe.getBody().name === 'sun') {
+			this.trackOptionSelectors.at.addOption('Night (away from the sun)', 'night');
 		}
 		
-		Gui.addOption(LOOKAT_ID, 'Direction of velocity', 'front');
-		Gui.addOption(LOOKAT_ID, 'Inverse direction of velocity', 'back');
+		this.trackOptionSelectors.at.addOption('Direction of velocity', 'front');
+		this.trackOptionSelectors.at.addOption('Inverse direction of velocity', 'back');
 
-	},
+	}
 
 	putDefaults(settings) {
-		//console.log(settings);
+		// console.log(settings);
+		this.getCamera();
 		if (settings) {
-			currentCamera.position.x = Number(settings.x) || 0;
-			currentCamera.position.y = Number(settings.y) || 0;
-			currentCamera.position.z = Number(settings.z) || 0;
-			currentCamera.fov = Number(settings.fov) || DEFAULT_FOV;
-			currentCamera.updateProjectionMatrix();
+			//if geoposition of cam, the gui will force initial settings
+			if (!this.currentCamera.geoPos) {
+				this.currentCamera.position.x = Number(settings.x) || 0;
+				this.currentCamera.position.y = Number(settings.y) || 0;
+				this.currentCamera.position.z = Number(settings.z) || 0;
+			}
+			this.currentCamera.fov = Number(settings.fov) || DEFAULT_FOV;
+			if (settings.far) this.currentCamera.far = settings.far;
+			this.currentCamera.updateProjectionMatrix();
+
+			if (settings.disableControls) this.disableControls();
 		}
-	},
+	}
 
 	addBody(body3d) {				
-		Gui.addOption(LOOKFROM_ID, body3d.celestial.title, body3d.celestial.name);
-		Gui.addOption(LOOKAT_ID, body3d.celestial.title, body3d.celestial.name);
+		this.trackOptionSelectors.from.addOption(body3d.celestial.title, body3d.celestial.name);
+		this.trackOptionSelectors.at.addOption(body3d.celestial.title, body3d.celestial.name);
 
-		function getCamPos() {
-			return body3d.root.localToWorld(this.position.clone());
+		function getCamPos(dbg) {
+			if (dbg) {
+				// console.log(this.position.clone());
+				// console.log(body3d.getDisplayObject().position.clone());
+			}
+			return body3d.getDisplayObject().localToWorld(this.position.clone());
 		}
 
-		const pov = getNewCamera();
+		const pov = this.getNewCamera();
 		pov.getAbsolutePos = getCamPos;
 		body3d.addCamera(POV_CAMERA_TYPE, pov);
 
-		const orbital = getNewCamera(true);
+		const orbital = this.getNewCamera(true);
 		orbital.getAbsolutePos = getCamPos;
 		orbital.position.set(0, -1, body3d.getPlanetStageSize() * 200);
 
 		body3d.addCamera(ORBITAL_CAMERA_TYPE, orbital);
 
-		bodies3d[body3d.celestial.name] = body3d;
-	},
+		//on the earth, position the camera at specific lon/lat
+		if (body3d.celestial.hasGeoposCam) {
+			pov.geoPos = new GeoPos(body3d, pov, this.gui);
 
-	updateCamera() {
-		updateCamera();
-		return currentCamera;
-	},
+			// pov.geoPos.activate();	
+			// this.setPrecision(true);
+
+		}
+
+		this.bodies3d[body3d.celestial.name] = body3d;
+	}
 
 	getCamera() {
-		if (typeof viewSettings.lookFrom === 'undefined') toggleCamera();
-		return currentCamera;
-	},
+		if (typeof this.viewSettings.lookFrom === 'undefined') this.toggleCamera();
+		return this.currentCamera;
+	}
+
+	getCameraPosition() {
+		return (this.getCamera().getAbsolutePos && this.getCamera().getAbsolutePos(true)) || this.getCamera().position;
+	}
 
 	updateCameraMatrix() {
-		if (currentCamera && currentCamera.parent) currentCamera.parent.updateMatrixWorld();
-	},
+		if (this.currentCamera && this.currentCamera.parent) this.currentCamera.parent.updateMatrixWorld();
+	}
+
+	setPrecision(val) {
+		Object.keys(this.bodies3d).forEach(name => {
+			this.bodies3d[name].celestial.maxPrecision = val;
+		});
+	}
+
+	toggleCamera = () => {
+		this.viewSettings.lookFrom = this.trackOptionSelectors.from.getValue();
+		this.viewSettings.lookAt = this.trackOptionSelectors.at.getValue();
+		this.disableControls();
+
+		//deactivate geopos GUI
+		if (this.currentCamera && this.currentCamera.geoPos) this.currentCamera.geoPos.deactivate();
+		
+		//reset all bodies to use fastest position computation
+		this.setPrecision(false);
+
+		const lookFromBody = this.bodies3d[this.viewSettings.lookFrom];
+		const lookAtBody = this.bodies3d[this.viewSettings.lookAt];
+		this.tracerManager.setTraceFrom();
+
+		if (lookFromBody) {
+			this.currentCamera = lookFromBody.getCamera(POV_CAMERA_TYPE);
+			this.domEl.on('mousewheel', this.onMouseWheel);
+
+			//when looking from a body, we need max precision as a minor change in position changes the expected output (e.g. a bodie's position against the stars)
+			this.setPrecision(true);
+			
+			//if we look from a body to another, trace the lookat body's path relative to the pov UNLESS the look target is orbiting to the pov
+			if (lookAtBody && !lookAtBody.celestial.isOrbitAround(lookFromBody.celestial)) {
+				this.tracerManager.setTraceFrom(lookFromBody, lookAtBody);
+			}
+
+			if (this.currentCamera.geoPos) this.currentCamera.geoPos.activate();
+
+		} else {
+			this.domEl.off('mousewheel');
+
+			//if we want to look from an orbital camera, check if it is to look at a particular body or to the whole system
+			if (this.viewSettings.lookFrom === ORBITAL_CAMERA_TYPE) {
+				this.currentCamera = (lookAtBody && lookAtBody.getCamera(ORBITAL_CAMERA_TYPE)) || this.globalCamera;
+				if (this.currentCamera.jsorrery && this.currentCamera.jsorrery.controls) this.currentCamera.jsorrery.controls.enabled = true;
+			}
+		}
+		
+		this.universe.repositionBodies();
+
+		this.trackOptionSelectors.at.toggleOptions([...toggling_at_options, this.viewSettings.lookAt], !!lookFromBody);
+
+		ExportValues.setCamera(this.currentCamera);
+
+		//we show/hide orbits and ecliptics depending on what bodies are of interest
+		this.orbitLinesManager.onCameraChange(lookFromBody, lookAtBody);
+
+		this.updateCamera();
+		// scene.draw();
+		this.universe.requestDraw();
+	}
+
+	updateCamera() {
+
+		if (typeof this.viewSettings.lookFrom === 'undefined') this.toggleCamera();
+
+		const lookFromBody = this.bodies3d[this.viewSettings.lookFrom];
+		const lookAtBody = this.bodies3d[this.viewSettings.lookAt];
+		const controls = this.currentCamera.jsorrery && this.currentCamera.jsorrery.controls;
+
+		if (this.currentCamera.geoPos) this.currentCamera.geoPos.update();
+		
+		if (controls) {
+			controls.update();
+		} else if (this.viewSettings.lookFrom) {
+
+			if (lookAtBody) {
+				lookAt.copy(lookAtBody.getPosition()).sub(lookFromBody.getPosition());	
+			} else if (this.viewSettings.lookAt === 'night') {
+				lookAt.copy(lookFromBody.getPosition());
+				lookAt.multiplyScalar(2);
+			} else if ('front,back'.indexOf(this.viewSettings.lookAt) !== -1) {
+				const vel = lookFromBody.celestial.movement;
+				lookAt.copy(vel).normalize();
+				if (this.viewSettings.lookAt === 'back') lookAt.negate();
+			} else {
+				lookAt.set(0, 0, 0).sub(lookFromBody.getPosition());
+			}
+			
+			this.currentCamera.lookAt(lookAt);
+		}
+		return this.currentCamera;
+
+	}
+
+	onMouseWheel = (event, delta) => {
+		const deltaDir = delta / Math.abs(delta);
+		this.currentCamera.fov += this.currentCamera.fov * 0.1 * -deltaDir;
+		if (this.currentCamera.fov > MAX_FOV) this.currentCamera.fov = MAX_FOV;
+		this.currentCamera.updateProjectionMatrix();
+		this.scene.draw();
+	}
+
+	onControlsUpdate = () => {
+		if (!this.universe.isPlaying()) this.scene.draw();
+	}
+
+	
+	getNewCamera(isOrbital) {
+		const cam = new PerspectiveCamera(this.cameraParams.fov, this.cameraParams.aspect, this.cameraParams.near, this.cameraParams.far);
+		cam.up = new Vector3(0, 0, 1);
+
+		if (isOrbital) {
+			const controls = new OrbitControls(cam, this.domEl.get(0));
+			//set the controls as a property of the camera, but namespaced
+			cam.jsorrery = cam.jsorrery || {};
+			cam.jsorrery.controls = controls;
+			controls.addEventListener('change', this.onControlsUpdate);
+			controls.target.set(0, 0, 0);
+			controls.enabled = false;
+		}
+
+		this.allCameras.push(cam);
+		return cam;
+	}
+
+	disableControls() {
+		this.allCameras.forEach(cam => {
+			if (cam.jsorrery && cam.jsorrery.controls) cam.jsorrery.controls.enabled = false;
+		});
+	}
 
 	kill() {
-		Gui.remove(LOOKAT_ID);
-		Gui.remove(LOOKFROM_ID);
-		if (domEl) domEl.off('mousewheel');
+		if (this.domEl) this.domEl.off('mousewheel');
 
-		allCameras.forEach(cam => {
-			if (cam.jsorrery && cam.jsorrery.controls) cam.jsorrery.controls.removeEventListener('change', onControlsUpdate);
+		this.allCameras.forEach(cam => {
+			if (cam.jsorrery && cam.jsorrery.controls) cam.jsorrery.controls.removeEventListener('change', this.onControlsUpdate);
 		});
-	},
+	}
 };
